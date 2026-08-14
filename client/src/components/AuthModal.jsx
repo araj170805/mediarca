@@ -32,27 +32,18 @@ export default function AuthModal() {
 
     try {
       if (authModalTab === 'login') {
-        // Real API login
-        let res;
-        try {
-          res = await api.login({ email, password });
-        } catch (apiErr) {
-          throw new Error(apiErr?.response?.data?.message || 'Login failed. Check your credentials.');
-        }
-
+        const res = await api.login({ email, password });
         if (res?.success && res.data) {
           loginUser(res.data.user, res.data.token);
           closeAuthModal();
           resetForm();
-          // Redirect based on role
           const role = res.data.user?.role;
           if (role === 'admin') router.push('/admin');
           else if (role === 'receptionist') router.push('/receptionist');
           else router.push('/dashboard');
         } else {
-          throw new Error(res?.message || 'Login failed. Please try again.');
+          setError(res?.message || 'Login failed. Please check your credentials.');
         }
-
       } else {
         // Signup
         if (roleTab === 'patient') {
@@ -65,7 +56,6 @@ export default function AuthModal() {
           } else {
             setError(res?.message || 'Patient registration failed.');
           }
-
         } else if (roleTab === 'receptionist') {
           if (!uniqueClinicId.trim()) {
             setError('Unique Clinic ID is required for receptionist registration.');
@@ -89,12 +79,7 @@ export default function AuthModal() {
         }
       }
     } catch (err) {
-      const msg = err.message || '';
-      if (msg.includes('Network Error') || msg.includes('ERR_NETWORK')) {
-        setError('Connection timeout. Please check your internet or try again in a moment.');
-      } else {
-        setError(msg || 'Registration failed. Please check your inputs and try again.');
-      }
+      setError(err.message || 'Operation failed. Please check your details.');
     } finally {
       setLoading(false);
     }
