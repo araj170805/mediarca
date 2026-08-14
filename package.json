@@ -6,7 +6,8 @@
     "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix client\"",
     "dev:backend": "npm run dev --prefix backend",
     "dev:client": "npm run dev --prefix client",
-    "build:client": "npm run build --prefix client"
+    "build:client": "npm run build --prefix client",
+    "build": "npm run build --prefix client"
   },
   "devDependencies": {
     "concurrently": "^9.2.4"
