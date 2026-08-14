@@ -14,7 +14,9 @@ router.delete('/family-members/:memberId', authMiddleware, authorizeRoles('patie
 router.get('/', authMiddleware, authorizeRoles('admin'), userController.getAllUsers);
 router.get('/:id', authMiddleware, authorizeRoles('admin'), userController.getUserById);
 router.put('/:id/block', authMiddleware, authorizeRoles('admin'), userController.blockUser);
+router.patch('/:id/block', authMiddleware, authorizeRoles('admin'), userController.blockUser);
 router.put('/:id/unblock', authMiddleware, authorizeRoles('admin'), userController.unblockUser);
+router.patch('/:id/unblock', authMiddleware, authorizeRoles('admin'), userController.unblockUser);
 router.delete('/:id', authMiddleware, authorizeRoles('admin'), userController.deleteUser);
 
 module.exports = router;

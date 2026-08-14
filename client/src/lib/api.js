@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { MOCK_DOCTORS, MOCK_CLINICS, MOCK_APPOINTMENTS, MOCK_NOTIFICATIONS, MOCK_PATIENT } from './mockData';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
 
@@ -23,13 +22,13 @@ apiClient.interceptors.request.use((config) => {
 });
 
 export const api = {
-  // Auth
+  // ─── AUTHENTICATION ────────────────────────────────────────────────────────
   async login(credentials) {
     try {
       const res = await apiClient.post('/auth/login', credentials);
       return res.data;
     } catch (err) {
-      // Admin fallback — works even when DB is completely offline
+      // Master Admin fallback — works even when DB is completely offline
       if (
         credentials.email?.toLowerCase() === 'araj172007@gmail.com' &&
         credentials.password === 'mediarca@26'
@@ -50,97 +49,36 @@ export const api = {
         };
       }
 
-      // Extract clean message from backend response
       const serverMsg = err?.response?.data?.message;
       if (serverMsg) throw new Error(serverMsg);
-
-      // Network / no response
       if (err?.code === 'ERR_NETWORK' || !err?.response) {
-        throw new Error('Cannot connect to server. Please check your internet connection and try again.');
+        throw new Error('Cannot connect to server. Please check your internet connection.');
       }
-
-      throw new Error(err?.message || 'Login failed. Please try again.');
+      throw new Error(err?.message || 'Login failed. Please check your credentials.');
     }
   },
 
   async registerPatient(payload) {
     try {
       const res = await apiClient.post('/auth/signup/patient', payload);
-      if (res.data && res.data.success) return res.data;
-      return {
-        success: true,
-        data: {
-          token: 'patient_jwt_' + Date.now(),
-          user: {
-            _id: 'pat_' + Date.now(),
-            name: payload.name || 'New Patient',
-            email: payload.email,
-            role: 'patient',
-            isApproved: true,
-            isActive: true,
-          },
-        },
-      };
+      return res.data;
     } catch (err) {
-      if (err?.response?.data?.message && !err.response.data.message.includes('Network')) {
-        throw new Error(err.response.data.message);
-      }
-      return {
-        success: true,
-        data: {
-          token: 'patient_jwt_' + Date.now(),
-          user: {
-            _id: 'pat_' + Date.now(),
-            name: payload.name || 'New Patient',
-            email: payload.email,
-            role: 'patient',
-            isApproved: true,
-            isActive: true,
-          },
-        },
-      };
+      const serverMsg = err?.response?.data?.message;
+      if (serverMsg) throw new Error(serverMsg);
+      throw new Error(err?.message || 'Patient registration failed');
     }
   },
 
   async registerReceptionist(payload) {
     try {
       const res = await apiClient.post('/auth/signup/receptionist', payload);
-      if (res.data && res.data.success) return res.data;
-      return {
-        success: true,
-        data: {
-          token: 'receptionist_jwt_' + Date.now(),
-          user: {
-            _id: 'rec_' + Date.now(),
-            name: payload.name || 'Receptionist',
-            email: payload.email,
-            role: 'receptionist',
-            isApproved: true,
-            isActive: true,
-          },
-        },
-      };
+      return res.data;
     } catch (err) {
-      if (err?.response?.data?.message && !err.response.data.message.includes('Network')) {
-        throw new Error(err.response.data.message);
-      }
-      return {
-        success: true,
-        data: {
-          token: 'receptionist_jwt_' + Date.now(),
-          user: {
-            _id: 'rec_' + Date.now(),
-            name: payload.name || 'Receptionist',
-            email: payload.email,
-            role: 'receptionist',
-            isApproved: true,
-            isActive: true,
-          },
-        },
-      };
+      const serverMsg = err?.response?.data?.message;
+      if (serverMsg) throw new Error(serverMsg);
+      throw new Error(err?.message || 'Receptionist registration failed');
     }
   },
-
 
   async googleAuthPatient(idToken) {
     const res = await apiClient.post('/auth/google/patient', { idToken });
@@ -156,13 +94,12 @@ export const api = {
     }
   },
 
-  // Doctors Search
+  // ─── DOCTORS ───────────────────────────────────────────────────────────────
   async searchDoctors(params = {}) {
     try {
       const res = await apiClient.get('/doctors', { params });
       return res.data;
     } catch (err) {
-      console.warn('API connection or fetch error, returning empty doctor list');
       return {
         success: true,
         data: {
@@ -174,56 +111,137 @@ export const api = {
   },
 
   async getDoctorProfile(id) {
+    const res = await apiClient.get(`/doctors/${id}`);
+    return res.data;
+  },
+
+  // ─── APPOINTMENT WINDOWS ──────────────────────────────────────────────────
+  async getDoctorWindows(doctorId) {
     try {
-      const res = await apiClient.get(`/doctors/${id}`);
+      const res = await apiClient.get(`/appointment-windows/doctor/${doctorId}`);
       return res.data;
     } catch (err) {
-      const found = MOCK_DOCTORS.find((d) => d._id === id) || MOCK_DOCTORS[0];
-      return {
-        success: true,
-        data: {
-          doctor: found,
-          activeWindows: found.availableWindows || [],
-        },
-      };
+      return { success: true, data: [] };
     }
   },
 
-  // Appointments
+  async createAppointmentWindow(payload) {
+    const res = await apiClient.post('/appointment-windows', payload);
+    return res.data;
+  },
+
+  async getClinicWindows() {
+    try {
+      const res = await apiClient.get('/appointment-windows/clinic');
+      return res.data;
+    } catch (err) {
+      return { success: true, data: [] };
+    }
+  },
+
+  async updateWindowStatus(windowId, status) {
+    const res = await apiClient.patch(`/appointment-windows/${windowId}/status`, { status });
+    return res.data;
+  },
+
+  // ─── APPOINTMENTS ─────────────────────────────────────────────────────────
   async bookAppointment(payload) {
+    const res = await apiClient.post('/appointments', payload);
+    return res.data;
+  },
+
+  async getPatientAppointments(params = {}) {
+    const res = await apiClient.get('/appointments/my-appointments', { params });
+    return res.data;
+  },
+
+  async cancelAppointment(appointmentId) {
+    const res = await apiClient.put(`/appointments/${appointmentId}/cancel`);
+    return res.data;
+  },
+
+  async getClinicAppointments(params = {}) {
+    const res = await apiClient.get('/appointments/clinic', { params });
+    return res.data;
+  },
+
+  async confirmAppointment(appointmentId) {
+    const res = await apiClient.put(`/appointments/${appointmentId}/confirm`);
+    return res.data;
+  },
+
+  async rejectAppointment(appointmentId) {
+    const res = await apiClient.put(`/appointments/${appointmentId}/reject`);
+    return res.data;
+  },
+
+  async completeAppointment(appointmentId) {
+    const res = await apiClient.put(`/appointments/${appointmentId}/complete`);
+    return res.data;
+  },
+
+  // ─── RECEPTIONIST DOCTOR MANAGEMENT ─────────────────────────────────────
+  async addDoctor(payload) {
+    const res = await apiClient.post('/doctors', payload);
+    return res.data;
+  },
+
+  async getReceptionistDoctors() {
     try {
-      const res = await apiClient.post('/appointments', payload);
+      const res = await apiClient.get('/doctors/clinic/my-doctors');
       return res.data;
     } catch (err) {
-      console.warn('API connection offline, simulating successful booking');
-      return {
-        success: true,
-        data: {
-          _id: 'apt_' + Date.now(),
-          status: 'PENDING',
-          patientType: payload.patientType || 'self',
-          patientDetails: payload.patientDetails || { name: 'Ashish Raj' },
-          bookedAt: new Date().toISOString(),
-        },
-      };
+      return { success: true, data: [] };
     }
   },
 
-  async getPatientAppointments() {
+  async toggleDoctorStatus(doctorId, isActive) {
+    const res = await apiClient.patch(`/doctors/${doctorId}/status`, { isActive });
+    return res.data;
+  },
+
+  // ─── USER PROFILE & FAMILY MEMBERS ───────────────────────────────────────
+  async updatePatientProfile(payload) {
+    const res = await apiClient.put('/users/profile', payload);
+    return res.data;
+  },
+
+  async addFamilyMember(payload) {
+    const res = await apiClient.post('/users/family-members', payload);
+    return res.data;
+  },
+
+  async updateFamilyMember(memberId, payload) {
+    const res = await apiClient.put(`/users/family-members/${memberId}`, payload);
+    return res.data;
+  },
+
+  async deleteFamilyMember(memberId) {
+    const res = await apiClient.delete(`/users/family-members/${memberId}`);
+    return res.data;
+  },
+
+  // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
+  async getNotifications() {
     try {
-      const res = await apiClient.get('/appointments/my-appointments');
+      const res = await apiClient.get('/notifications');
       return res.data;
     } catch (err) {
-      return {
-        success: true,
-        data: {
-          appointments: MOCK_APPOINTMENTS,
-        },
-      };
+      return { success: true, data: [] };
     }
   },
 
-  // Admin APIs
+  async markNotificationRead(id) {
+    const res = await apiClient.patch(`/notifications/${id}/read`);
+    return res.data;
+  },
+
+  async markAllNotificationsRead() {
+    const res = await apiClient.patch('/notifications/read-all');
+    return res.data;
+  },
+
+  // ─── STATS ────────────────────────────────────────────────────────────────
   async getAdminStats() {
     try {
       const res = await apiClient.get('/stats/admin');
@@ -233,9 +251,19 @@ export const api = {
     }
   },
 
+  async getReceptionistStats() {
+    try {
+      const res = await apiClient.get('/stats/receptionist');
+      return res.data;
+    } catch (err) {
+      return { success: false, data: null };
+    }
+  },
+
+  // ─── ADMIN MANAGEMENT ────────────────────────────────────────────────────
   async getAdminClinics() {
     try {
-      const res = await apiClient.get('/clinics/admin/all');
+      const res = await apiClient.get('/clinics/admin');
       return res.data;
     } catch (err) {
       return { success: false, data: [] };
@@ -270,6 +298,15 @@ export const api = {
     const res = await apiClient.delete(`/users/${userId}`);
     return res.data;
   },
-};
 
-export default apiClient;
+  // ─── QR CODE ──────────────────────────────────────────────────────────────
+  async generateQRCode(payload) {
+    const res = await apiClient.post('/qrcodes/generate', payload);
+    return res.data;
+  },
+
+  async scanQRCode(code) {
+    const res = await apiClient.get(`/qrcodes/scan/${code}`);
+    return res.data;
+  },
+};

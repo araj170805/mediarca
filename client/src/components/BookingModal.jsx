@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import Image from 'next/image';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { X, User, Users, CheckCircle, Clock, Calendar, ShieldCheck, ArrowRight, ArrowLeft } from 'lucide-react';
+import { X, User, Users, CheckCircle, Clock, Calendar, ArrowRight, ArrowLeft, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 
 export default function BookingModal() {
@@ -21,45 +20,87 @@ export default function BookingModal() {
   const [patientType, setPatientType] = useState('self'); // 'self' | 'family'
   
   // Patient details state
-  const [fullName, setFullName] = useState(user?.name || 'Ashish Raj');
+  const [fullName, setFullName] = useState(user?.name || '');
   const [age, setAge] = useState('24');
   const [bloodGroup, setBloodGroup] = useState('O+');
   const [reason, setReason] = useState('Regular Checkup');
   
-  // Window selection
-  const [selectedWindow, setSelectedWindow] = useState(
-    selectedWindowForBooking || {
-      id: 'w1',
-      dateText: '20 August 2026',
-      timeRange: '10:00 AM - 1:00 PM',
-      status: 'open',
-    }
-  );
+  // Windows state
+  const [windowsList, setWindowsList] = useState([]);
+  const [selectedWindow, setSelectedWindow] = useState(null);
+  const [loadingWindows, setLoadingWindows] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
+  const [bookingError, setBookingError] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      if (patientType === 'self') {
+        setFullName(user.name || '');
+      }
+    }
+  }, [user, patientType]);
+
+  useEffect(() => {
+    if (isBookingModalOpen && selectedDoctorForBooking) {
+      if (selectedWindowForBooking) {
+        setSelectedWindow(selectedWindowForBooking);
+      }
+      fetchWindows();
+    }
+  }, [isBookingModalOpen, selectedDoctorForBooking]);
+
+  const fetchWindows = async () => {
+    if (!selectedDoctorForBooking?._id) return;
+    setLoadingWindows(true);
+    try {
+      const res = await api.getDoctorWindows(selectedDoctorForBooking._id);
+      if (res?.success && Array.isArray(res.data)) {
+        setWindowsList(res.data);
+        if (res.data.length > 0 && !selectedWindowForBooking) {
+          setSelectedWindow(res.data[0]);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load doctor windows:', err.message);
+    } finally {
+      setLoadingWindows(false);
+    }
+  };
 
   if (!isBookingModalOpen || !selectedDoctorForBooking) return null;
 
   const doctor = selectedDoctorForBooking;
+  const clinicId = doctor.clinicId?._id || doctor.clinicId;
 
   const handleConfirmBooking = async () => {
+    if (!selectedWindow?._id) {
+      setBookingError('Please select a valid open appointment window.');
+      return;
+    }
+
     setSubmitting(true);
+    setBookingError('');
     try {
-      await api.bookAppointment({
-        clinicId: doctor.clinicId?._id || doctor.clinicId || 'cl1',
-        appointmentWindowId: selectedWindow.id || 'w1',
-        patientType: patientType,
+      const res = await api.bookAppointment({
+        clinicId,
+        appointmentWindowId: selectedWindow._id,
+        patientType,
         patientDetails: {
-          name: patientType === 'self' ? `${fullName} (Myself)` : fullName,
-          age,
+          name: fullName || user?.name || 'Patient',
+          age: Number(age) || 24,
           bloodGroup,
           reason,
         },
       });
-      setStep(5); // Move to success step
+
+      if (res?.success) {
+        setStep(5); // Move to success step
+      } else {
+        setBookingError(res?.message || 'Booking failed. Please try again.');
+      }
     } catch (err) {
-      console.error('Booking failed:', err);
-      setStep(5); // Fallback to success step for mock demo
+      setBookingError(err.message || 'Failed to book appointment.');
     } finally {
       setSubmitting(false);
     }
@@ -112,7 +153,13 @@ export default function BookingModal() {
 
         {/* Modal Body Content */}
         <div className="p-6 overflow-y-auto flex-1">
-          
+          {bookingError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{bookingError}</span>
+            </div>
+          )}
+
           {/* STEP 1: Who is this appointment for? */}
           {step === 1 && (
             <div className="space-y-6">
@@ -125,7 +172,7 @@ export default function BookingModal() {
                   type="button"
                   onClick={() => {
                     setPatientType('self');
-                    setFullName(user?.name || 'Ashish Raj');
+                    setFullName(user?.name || '');
                   }}
                   className={`p-6 rounded-2xl border-2 text-center transition flex flex-col items-center gap-3 ${
                     patientType === 'self'
@@ -186,6 +233,7 @@ export default function BookingModal() {
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
                   <input
                     type="text"
+                    required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0D5C46]"
@@ -197,6 +245,7 @@ export default function BookingModal() {
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Age</label>
                   <input
                     type="number"
+                    required
                     value={age}
                     onChange={(e) => setAge(e.target.value)}
                     className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0D5C46]"
@@ -222,7 +271,7 @@ export default function BookingModal() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Reason for Visit (Optional)</label>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Reason for Visit</label>
                   <input
                     type="text"
                     value={reason}
@@ -242,7 +291,14 @@ export default function BookingModal() {
                   <span>Back</span>
                 </button>
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => {
+                    if (!fullName.trim()) {
+                      setBookingError('Patient full name is required');
+                      return;
+                    }
+                    setBookingError('');
+                    setStep(3);
+                  }}
                   className="px-6 py-2.5 bg-[#0D5C46] hover:bg-[#083E2F] text-white text-sm font-bold rounded-xl shadow-md transition flex items-center gap-2"
                 >
                   <span>Next</span>
@@ -257,63 +313,46 @@ export default function BookingModal() {
             <div className="space-y-4">
               <div>
                 <h4 className="text-base font-bold text-slate-800">Select Appointment Window</h4>
-                <p className="text-xs text-slate-500">Choose from available appointment windows</p>
+                <p className="text-xs text-slate-500">Choose from open clinic appointment windows</p>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-xl text-xs font-semibold text-slate-600 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-[#0D5C46]" />
-                <span>Today, 20 August 2026</span>
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedWindow({
-                      id: 'w1',
-                      dateText: '20 August 2026',
-                      timeRange: '10:00 AM - 1:00 PM',
-                    })
-                  }
-                  className={`w-full p-4 rounded-2xl border text-left flex items-center justify-between transition ${
-                    selectedWindow.timeRange === '10:00 AM - 1:00 PM'
-                      ? 'border-[#0D5C46] bg-emerald-50/50 shadow-sm'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-4 h-4 text-[#0D5C46]" />
-                    <span className="font-bold text-slate-800 text-sm">10:00 AM - 1:00 PM</span>
-                  </div>
-                  <span className="text-xs font-semibold bg-emerald-100 text-[#0D5C46] px-2.5 py-1 rounded-full">
-                    Available
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setSelectedWindow({
-                      id: 'w2',
-                      dateText: '20 August 2026',
-                      timeRange: '6:00 PM - 9:00 PM',
-                    })
-                  }
-                  className={`w-full p-4 rounded-2xl border text-left flex items-center justify-between transition ${
-                    selectedWindow.timeRange === '6:00 PM - 9:00 PM'
-                      ? 'border-[#0D5C46] bg-emerald-50/50 shadow-sm'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-4 h-4 text-[#0D5C46]" />
-                    <span className="font-bold text-slate-800 text-sm">6:00 PM - 9:00 PM</span>
-                  </div>
-                  <span className="text-xs font-semibold bg-emerald-100 text-[#0D5C46] px-2.5 py-1 rounded-full">
-                    Available
-                  </span>
-                </button>
-              </div>
+              {loadingWindows ? (
+                <div className="py-8 text-center">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#0D5C46]" />
+                </div>
+              ) : windowsList.length > 0 ? (
+                <div className="space-y-3">
+                  {windowsList.map((win) => (
+                    <button
+                      key={win._id}
+                      type="button"
+                      onClick={() => setSelectedWindow(win)}
+                      className={`w-full p-4 rounded-2xl border text-left flex items-center justify-between transition ${
+                        selectedWindow?._id === win._id
+                          ? 'border-[#0D5C46] bg-emerald-50/50 shadow-sm'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Clock className="w-4 h-4 text-[#0D5C46]" />
+                        <div>
+                          <span className="font-bold text-slate-800 text-sm">{win.startTime} - {win.endTime}</span>
+                          <span className="text-[10px] text-slate-500 block">
+                            Date: {win.date ? new Date(win.date).toLocaleDateString() : 'Today'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold bg-emerald-100 text-[#0D5C46] px-2.5 py-1 rounded-full uppercase">
+                        {win.status}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl">
+                  No active appointment windows currently available for this doctor.
+                </div>
+              )}
 
               <div className="pt-6 flex items-center justify-between">
                 <button
@@ -324,7 +363,14 @@ export default function BookingModal() {
                   <span>Back</span>
                 </button>
                 <button
-                  onClick={() => setStep(4)}
+                  onClick={() => {
+                    if (!selectedWindow) {
+                      setBookingError('Please select an appointment window');
+                      return;
+                    }
+                    setBookingError('');
+                    setStep(4);
+                  }}
                   className="px-6 py-2.5 bg-[#0D5C46] hover:bg-[#083E2F] text-white text-sm font-bold rounded-xl shadow-md transition flex items-center gap-2"
                 >
                   <span>Next</span>
@@ -348,8 +394,7 @@ export default function BookingModal() {
                   </div>
                   <div>
                     <span className="text-slate-400 block">Clinic</span>
-                    <span className="font-bold text-slate-800">{doctor.clinicName}</span>
-                    <span className="text-slate-500 block">{doctor.locationText}</span>
+                    <span className="font-bold text-slate-800">{doctor.clinicId?.name || doctor.clinicName || 'Clinic'}</span>
                   </div>
                 </div>
 
@@ -358,11 +403,15 @@ export default function BookingModal() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-slate-400 block">Date</span>
-                    <span className="font-bold text-slate-800">{selectedWindow.dateText}</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedWindow?.date ? new Date(selectedWindow.date).toLocaleDateString() : 'Scheduled'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Appointment Window</span>
-                    <span className="font-bold text-[#0D5C46]">{selectedWindow.timeRange}</span>
+                    <span className="font-bold text-[#0D5C46]">
+                      {selectedWindow ? `${selectedWindow.startTime} - ${selectedWindow.endTime}` : 'Time Slot'}
+                    </span>
                   </div>
                 </div>
 
@@ -371,7 +420,7 @@ export default function BookingModal() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
                     <span className="text-slate-400 block">Patient</span>
-                    <span className="font-bold text-slate-800">{fullName}</span>
+                    <span className="font-bold text-slate-800">{fullName || user?.name}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block">Consultation Fee</span>
@@ -390,7 +439,7 @@ export default function BookingModal() {
                 <button
                   disabled={submitting}
                   onClick={handleConfirmBooking}
-                  className="px-6 py-2.5 bg-[#0D5C46] hover:bg-[#083E2F] text-white text-sm font-bold rounded-xl shadow-md transition"
+                  className="px-6 py-2.5 bg-[#0D5C46] hover:bg-[#083E2F] text-white text-sm font-bold rounded-xl shadow-md transition flex items-center gap-2 disabled:opacity-50"
                 >
                   {submitting ? 'Booking...' : 'Confirm Appointment'}
                 </button>
@@ -410,7 +459,7 @@ export default function BookingModal() {
               </h4>
 
               <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                Your appointment request has been sent to the clinic. You will receive a notification once it is confirmed.
+                Your appointment request has been sent to the clinic receptionist. You will receive a notification once it is confirmed.
               </p>
 
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-bold border border-amber-200">

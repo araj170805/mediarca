@@ -8,6 +8,7 @@ const verifyClinicAccess = require('../middleware/clinicAccess.middleware.js');
 // Admin Endpoints
 router.post('/', authMiddleware, authorizeRoles('admin'), clinicController.createClinic);
 router.get('/admin', authMiddleware, authorizeRoles('admin'), clinicController.getClinicsForAdmin);
+router.get('/admin/all', authMiddleware, authorizeRoles('admin'), clinicController.getClinicsForAdmin);
 router.put('/:id/status', authMiddleware, authorizeRoles('admin'), clinicController.updateClinicStatus);
 
 // Receptionist Endpoint
