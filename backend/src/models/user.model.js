@@ -53,8 +53,28 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      // Not required for Google OAuth users
+      default: null,
     },
+
+    // ─── Google / Firebase OAuth ──────────────────────────────────────────────
+    authProvider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local',
+    },
+    googleId: {
+      type: String,
+      default: null,
+      // Firebase UID from Google sign-in
+    },
+    avatar: {
+      type: String,
+      default: null,
+      // Profile picture URL from Google
+    },
+    // ──────────────────────────────────────────────────────────────────────────
+
     role: {
       type: String,
       enum: ['admin', 'receptionist', 'patient'],

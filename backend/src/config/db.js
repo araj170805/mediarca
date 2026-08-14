@@ -22,7 +22,9 @@ const connectDB = async ({ retries = 5, delay = 5000 } = {}) => {
     attempt += 1;
     try {
       await mongoose.connect(mongoUri, {
-        serverSelectionTimeoutMS: 10000,
+        serverSelectionTimeoutMS: 30000,  // 30s – Atlas needs more time on cold start
+        connectTimeoutMS: 30000,
+        socketTimeoutMS: 45000,
         maxPoolSize: 10,
       });
       console.log('MongoDB connected');
