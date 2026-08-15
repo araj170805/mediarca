@@ -24,7 +24,7 @@ apiClient.interceptors.request.use((config) => {
 export const api = {
   // ─── AUTHENTICATION ────────────────────────────────────────────────────────
   async login(credentials) {
-    // Master Admin check — works instantly
+    // Master Admin check
     if (
       credentials.email?.toLowerCase() === 'araj172007@gmail.com' &&
       credentials.password === 'mediarca@26'
@@ -48,31 +48,15 @@ export const api = {
     try {
       const res = await apiClient.post('/auth/login', credentials);
       if (res.data && res.data.success) return res.data;
+      throw new Error(res?.data?.message || 'Invalid email or password.');
     } catch (err) {
       const serverMsg = err?.response?.data?.message;
       if (serverMsg) throw new Error(serverMsg);
       if (err?.response?.status === 401 || err?.response?.status === 400 || err?.response?.status === 403) {
-        throw new Error(serverMsg || 'Invalid email or password.');
+        throw new Error('Invalid email or password.');
       }
+      throw new Error('Unable to connect to authentication server. Please check your credentials or network.');
     }
-
-    // Dev/deployment fallback when backend endpoint is not reachable
-    const isRec = credentials.email?.includes('rec') || credentials.email?.includes('receptionist');
-    const userRole = isRec ? 'receptionist' : 'patient';
-    return {
-      success: true,
-      data: {
-        token: `${userRole}_jwt_${Date.now()}`,
-        user: {
-          _id: `${userRole}_${Date.now()}`,
-          name: credentials.email?.split('@')[0] || 'User',
-          email: credentials.email,
-          role: userRole,
-          isApproved: true,
-          isActive: true,
-        },
-      },
-    };
   },
 
   async registerPatient(payload) {
