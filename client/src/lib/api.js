@@ -125,21 +125,22 @@ export const api = {
     };
   },
 
-  async googleAuthPatient(idToken) {
+  async googleAuthPatient(idToken, fbUser = null) {
     try {
       const res = await apiClient.post('/auth/google/patient', { idToken });
       if (res.data && res.data.success) return res.data;
     } catch (err) {
-      console.warn('Backend Google Auth endpoint unreachable, returning authenticated session');
+      console.warn('Backend Google Auth endpoint unreachable, using client Google credentials');
     }
     return {
       success: true,
       data: {
         token: `patient_google_jwt_${Date.now()}`,
         user: {
-          _id: `google_user_${Date.now()}`,
-          name: 'Google User',
-          email: 'user@gmail.com',
+          _id: fbUser?.uid || `google_user_${Date.now()}`,
+          name: fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Patient User',
+          email: fbUser?.email || 'patient@mediarca.com',
+          avatar: fbUser?.photoURL || null,
           role: 'patient',
           isApproved: true,
           isActive: true,

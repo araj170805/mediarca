@@ -90,10 +90,10 @@ export default function AuthModal() {
     setError('');
     try {
       // 1. Trigger real Firebase Google Popup in browser
-      const { idToken } = await signInWithGooglePopup();
+      const { user: fbUser, idToken } = await signInWithGooglePopup();
       
       // 2. Send Firebase ID token to backend for verification & user registration/login
-      const res = await api.googleAuthPatient(idToken);
+      const res = await api.googleAuthPatient(idToken, fbUser);
       
       if (res?.success && res.data) {
         loginUser(res.data.user, res.data.token);
