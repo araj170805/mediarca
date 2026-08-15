@@ -42,28 +42,76 @@ export default function LandingPage() {
   const popularSearches = ['Cardiologist', 'Dermatologist', 'Dentist', 'Pediatrician', 'Orthopedic'];
 
   const handleUseMyLocation = () => {
-    if (!navigator.geolocation) { alert('Geolocation not supported.'); return; }
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
     setDetectingLocation(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`, { headers: { 'Accept-Language': 'en' } });
-          const data = await res.json();
-          const city = data.address?.city || data.address?.town || data.address?.village || 'Nearby';
-          const state = data.address?.state || '';
-          const loc = state ? `${city}, ${state}` : city;
-          setSelectedLocation(loc);
-          setCityInput(loc);
-        } catch {
+          // 1. Try BigDataCloud Reverse Geocoding API (High Accuracy for City/District level)
+          const bdcRes = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          );
+          const bdcData = await bdcRes.json();
+          const city =
+            bdcData.locality ||
+            bdcData.city ||
+            bdcData.localityInfo?.administrative?.[2]?.name ||
+            bdcData.localityInfo?.administrative?.[1]?.name ||
+            '';
+          const state = bdcData.principalSubdivision || '';
+
+          if (city) {
+            const exactLocation = state ? `${city}, ${state}` : city;
+            setSelectedLocation(exactLocation);
+            setCityInput(exactLocation);
+            setDetectingLocation(false);
+            return;
+          }
+
+          // 2. Fallback to Nominatim OpenStreetMap with full address component parsing
+          const nomRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const nomData = await nomRes.json();
+          const addr = nomData.address || {};
+          const nomCity =
+            addr.city ||
+            addr.town ||
+            addr.suburb ||
+            addr.village ||
+            addr.county ||
+            addr.state_district ||
+            addr.municipality ||
+            addr.neighbourhood ||
+            'Nearby';
+          const nomState = addr.state || '';
+          const nomLocation = nomState ? `${nomCity}, ${nomState}` : nomCity;
+
+          setSelectedLocation(nomLocation);
+          setCityInput(nomLocation);
+        } catch (err) {
+          console.warn('Geolocation reverse lookup fallback:', err);
           setSelectedLocation(`${latitude.toFixed(2)}°N, ${longitude.toFixed(2)}°E`);
           setCityInput('GPS Location');
         } finally {
           setDetectingLocation(false);
         }
       },
-      () => { setDetectingLocation(false); alert('Could not detect location. Please enter manually.'); },
-      { timeout: 10000 }
+      (err) => {
+        setDetectingLocation(false);
+        console.warn('Geolocation position error:', err);
+        alert('Could not retrieve GPS coordinates. Please enter location manually.');
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
     );
   };
 
