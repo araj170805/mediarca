@@ -24,27 +24,6 @@ apiClient.interceptors.request.use((config) => {
 export const api = {
   // ─── AUTHENTICATION ────────────────────────────────────────────────────────
   async login(credentials) {
-    // Master Admin check
-    if (
-      credentials.email?.toLowerCase() === 'araj172007@gmail.com' &&
-      credentials.password === 'mediarca@26'
-    ) {
-      return {
-        success: true,
-        data: {
-          token: 'admin_fallback_jwt_token_2026',
-          user: {
-            _id: 'admin_super_user',
-            name: 'MediArca Admin',
-            email: 'araj172007@gmail.com',
-            role: 'admin',
-            isApproved: true,
-            isActive: true,
-          },
-        },
-      };
-    }
-
     try {
       const res = await apiClient.post('/auth/login', credentials);
       if (res.data && res.data.success) return res.data;

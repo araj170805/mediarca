@@ -66,44 +66,23 @@ export default function AdminDashboard() {
     setModalLoading(true);
     setError('');
 
-    const randomHex = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const generatedId = `MED-CLN-${randomHex}`;
-
     try {
       const res = await api.createClinic({
         name: clinicName,
         authorizedEmail: authEmail.toLowerCase(),
-        uniqueClinicId: generatedId,
-        city: 'Rourkela',
-        state: 'Odisha',
       });
 
-      if (res?.success) {
-        setCreatedClinicId(res.data?.uniqueClinicId || generatedId);
-        fetchAdminData();
-      } else {
-        // Fallback local update if offline
-        const newClinic = {
-          _id: 'cl_' + Date.now(),
-          name: clinicName,
-          uniqueClinicId: generatedId,
-          authorizedEmail: authEmail.toLowerCase(),
-          approvalStatus: 'approved',
-        };
-        setClinicsList([newClinic, ...clinicsList]);
-        setCreatedClinicId(generatedId);
+      if (res?.success && res.data) {
+        const createdClinic = res.data;
+        setCreatedClinicId(createdClinic.uniqueClinicId);
+        setClinicsList((prev) => {
+          const exists = prev.some((c) => c._id === createdClinic._id);
+          return exists ? prev : [createdClinic, ...prev];
+        });
+        await fetchAdminData();
       }
     } catch (err) {
-      // Create local entry
-      const newClinic = {
-        _id: 'cl_' + Date.now(),
-        name: clinicName,
-        uniqueClinicId: generatedId,
-        authorizedEmail: authEmail.toLowerCase(),
-        approvalStatus: 'approved',
-      };
-      setClinicsList([newClinic, ...clinicsList]);
-      setCreatedClinicId(generatedId);
+      setError(err.message || 'Failed to create clinic on server');
     } finally {
       setModalLoading(false);
     }
