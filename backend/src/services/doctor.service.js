@@ -4,11 +4,10 @@ const AppointmentWindow = require('../models/AppointmentWindow.model.js');
 const ApiError = require('../utils/apiError.js');
 
 class DoctorService {
-  // Receptionist: Add doctor to clinic
   static async addDoctor(clinicId, { name, specialization, consultationFee, doctorId }) {
     const clinic = await Clinic.findById(clinicId);
-    if (!clinic || !clinic.isActive || clinic.approvalStatus !== 'approved') {
-      throw new ApiError(403, 'Clinic is not active or approved');
+    if (!clinic || !clinic.isActive) {
+      throw new ApiError(403, 'Clinic is not active');
     }
 
     const doctor = await DoctorClinic.create({

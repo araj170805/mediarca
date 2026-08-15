@@ -19,13 +19,6 @@ const verifyClinicAccess = asyncHandler(async (req, res, next) => {
       throw new ApiError(403, 'Clinic is currently inactive');
     }
 
-    if (clinic.approvalStatus !== 'approved') {
-      throw new ApiError(
-        403,
-        `Clinic status is '${clinic.approvalStatus}'. Only approved clinics are accessible`
-      );
-    }
-
     req.clinic = clinic;
   }
 

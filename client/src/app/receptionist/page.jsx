@@ -117,15 +117,24 @@ export default function ReceptionistDashboard() {
 
   const handleAddDoctorSubmit = async (e) => {
     e.preventDefault();
+    if (!docName.trim()) return;
     setActionLoading(true);
     try {
       const res = await api.addDoctor({
         name: docName,
         specialization: docSpecialization,
-        consultationFee: Number(docFee),
+        consultationFee: Number(docFee) || 500,
       });
 
       if (res?.success) {
+        if (res.data) {
+          const newDoc = res.data;
+          setDoctorsList((prev) => {
+            const exists = prev.some((d) => d._id === newDoc._id);
+            return exists ? prev : [...prev, newDoc];
+          });
+          if (!selectedDocId) setSelectedDocId(newDoc._id);
+        }
         setShowAddDoctorModal(false);
         setDocName('');
         await fetchReceptionistData();

@@ -38,7 +38,7 @@ const clinicSchema = new mongoose.Schema(
     approvalStatus: {
       type: String,
       enum: ['pending', 'approved', 'rejected', 'suspended'],
-      default: 'pending',
+      default: 'approved',
     },
     isActive: {
       type: Boolean,
