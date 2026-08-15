@@ -131,17 +131,30 @@ export default function PatientDashboard() {
 
   const handleAddFamilyMember = async (e) => {
     e.preventDefault();
+    if (!familyForm.name.trim()) return;
     setActionLoading(true);
     try {
-      const res = await api.addFamilyMember({
+      const newMember = {
+        _id: `fam_${Date.now()}`,
         name: familyForm.name,
         relation: familyForm.relation,
         age: Number(familyForm.age) || 0,
         gender: familyForm.gender,
         phone: familyForm.phone,
-      });
-      if (res?.success && res.data) {
-        setFamilyMembers(res.data.familyMembers || []);
+      };
+
+      const res = await api.addFamilyMember(newMember);
+      if (res?.success) {
+        const added = Array.isArray(res.data?.familyMembers)
+          ? res.data.familyMembers
+          : (res.data?._id ? res.data : newMember);
+
+        setFamilyMembers((prev) => {
+          if (Array.isArray(added)) return added;
+          const exists = prev.some((m) => m._id === added._id);
+          return exists ? prev : [...prev, added];
+        });
+
         setShowAddFamilyModal(false);
         setFamilyForm({ name: '', relation: 'Spouse', age: '', gender: 'male', phone: '' });
       }
@@ -155,8 +168,11 @@ export default function PatientDashboard() {
   const handleDeleteFamilyMember = async (memberId) => {
     try {
       const res = await api.deleteFamilyMember(memberId);
-      if (res?.success && res.data) {
-        setFamilyMembers(res.data.familyMembers || []);
+      if (res?.success) {
+        setFamilyMembers((prev) => {
+          if (Array.isArray(res.data?.familyMembers)) return res.data.familyMembers;
+          return prev.filter((m) => m._id !== memberId);
+        });
       }
     } catch (err) {
       alert(err.message || 'Failed to delete family member');

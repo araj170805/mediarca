@@ -19,22 +19,28 @@ export function AuthProvider({ children }) {
   const [selectedWindowForBooking, setSelectedWindowForBooking] = useState(null);
 
   useEffect(() => {
-    // Check if user is logged in
+    // Check if user is logged in & restore session immediately from localStorage
     const checkAuth = async () => {
       try {
         const token = localStorage.getItem('mediarca_token');
+        const savedUserStr = localStorage.getItem('mediarca_user');
+
+        if (savedUserStr) {
+          try {
+            const parsedUser = JSON.parse(savedUserStr);
+            setUser(parsedUser);
+          } catch (e) {}
+        }
+
         if (token) {
           const res = await api.getMe();
           if (res?.success && res.data) {
             setUser(res.data);
-          } else {
-            setUser(null);
-            localStorage.removeItem('mediarca_token');
+            localStorage.setItem('mediarca_user', JSON.stringify(res.data));
           }
         }
       } catch (err) {
-        setUser(null);
-        localStorage.removeItem('mediarca_token');
+        console.warn('Silent auth refresh sync:', err?.message);
       } finally {
         setLoading(false);
       }
@@ -48,11 +54,15 @@ export function AuthProvider({ children }) {
     if (token) {
       localStorage.setItem('mediarca_token', token);
     }
+    if (userData) {
+      localStorage.setItem('mediarca_user', JSON.stringify(userData));
+    }
   };
 
   const logoutUser = () => {
     setUser(null);
     localStorage.removeItem('mediarca_token');
+    localStorage.removeItem('mediarca_user');
   };
 
   const openAuthModal = (tab = 'login') => {
