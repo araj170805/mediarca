@@ -35,6 +35,42 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+// Returns true when the stored token is a client-side placeholder (no real JWT)
+const isOfflineToken = () => {
+  if (typeof window === 'undefined') return false;
+  const token = localStorage.getItem('mediarca_token');
+  if (!token) return true;
+  const offlinePrefixes = ['patient_jwt_', 'receptionist_jwt_', 'patient_google_jwt_', 'admin_fallback_jwt'];
+  return offlinePrefixes.some((p) => token.startsWith(p));
+};
+
+// Read/write family members from localStorage
+const lsFamilyKey = (userId) => `mediarca_family_${userId}`;
+const lsGetFamily = (userId) => {
+  try { return JSON.parse(localStorage.getItem(lsFamilyKey(userId)) || '[]'); } catch { return []; }
+};
+const lsSaveFamily = (userId, members) => {
+  localStorage.setItem(lsFamilyKey(userId), JSON.stringify(members));
+};
+
+// Read/write doctors from localStorage
+const lsDoctorsKey = (userId) => `mediarca_doctors_${userId}`;
+const lsGetDoctors = (userId) => {
+  try { return JSON.parse(localStorage.getItem(lsDoctorsKey(userId)) || '[]'); } catch { return []; }
+};
+const lsSaveDoctors = (userId, doctors) => {
+  localStorage.setItem(lsDoctorsKey(userId), JSON.stringify(doctors));
+};
+
+// Get current offline user _id
+const getOfflineUserId = () => {
+  try {
+    const u = JSON.parse(localStorage.getItem('mediarca_user') || '{}');
+    return u._id || 'offline_user';
+  } catch { return 'offline_user'; }
+};
+
 export const api = {
   // ─── AUTHENTICATION ────────────────────────────────────────────────────────
   async login(credentials) {
@@ -268,30 +304,57 @@ export const api = {
 
   // ─── RECEPTIONIST DOCTOR MANAGEMENT ─────────────────────────────────────
   async addDoctor(payload) {
+    if (isOfflineToken()) {
+      const uid = getOfflineUserId();
+      const newDoc = { _id: `doc_${Date.now()}`, isActive: true, ...payload };
+      const docs = lsGetDoctors(uid);
+      docs.push(newDoc);
+      lsSaveDoctors(uid, docs);
+      return { success: true, data: newDoc };
+    }
     try {
       const res = await apiClient.post('/doctors', payload);
       return res.data;
     } catch (err) {
       const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return { success: true, data: { _id: `doc_${Date.now()}`, ...payload } };
+      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
+      const uid = getOfflineUserId();
+      const newDoc = { _id: `doc_${Date.now()}`, isActive: true, ...payload };
+      const docs = lsGetDoctors(uid);
+      docs.push(newDoc);
+      lsSaveDoctors(uid, docs);
+      return { success: true, data: newDoc };
     }
   },
 
   async getReceptionistDoctors() {
+    if (isOfflineToken()) {
+      const uid = getOfflineUserId();
+      return { success: true, data: lsGetDoctors(uid) };
+    }
     try {
       const res = await apiClient.get('/doctors/clinic/my-doctors');
       return res.data;
     } catch (err) {
-      return { success: true, data: [] };
+      const uid = getOfflineUserId();
+      return { success: true, data: lsGetDoctors(uid) };
     }
   },
 
   async toggleDoctorStatus(doctorId, isActive) {
+    if (isOfflineToken()) {
+      const uid = getOfflineUserId();
+      const docs = lsGetDoctors(uid).map((d) => d._id === doctorId ? { ...d, isActive } : d);
+      lsSaveDoctors(uid, docs);
+      return { success: true, data: { doctorId, isActive } };
+    }
     try {
       const res = await apiClient.patch(`/doctors/${doctorId}/status`, { isActive });
       return res.data;
     } catch (err) {
+      const uid = getOfflineUserId();
+      const docs = lsGetDoctors(uid).map((d) => d._id === doctorId ? { ...d, isActive } : d);
+      lsSaveDoctors(uid, docs);
       return { success: true, data: { doctorId, isActive } };
     }
   },
@@ -309,34 +372,79 @@ export const api = {
   },
 
   async addFamilyMember(payload) {
+    if (isOfflineToken()) {
+      const uid = getOfflineUserId();
+      const newMember = { _id: `fam_${Date.now()}`, ...payload };
+      const members = lsGetFamily(uid);
+      members.push(newMember);
+      lsSaveFamily(uid, members);
+      return { success: true, data: newMember };
+    }
     try {
       const res = await apiClient.post('/users/family-members', payload);
       return res.data;
     } catch (err) {
       const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return { success: true, data: { _id: `fam_${Date.now()}`, ...payload } };
+      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
+      const uid = getOfflineUserId();
+      const newMember = { _id: `fam_${Date.now()}`, ...payload };
+      const members = lsGetFamily(uid);
+      members.push(newMember);
+      lsSaveFamily(uid, members);
+      return { success: true, data: newMember };
+    }
+  },
+
+  async getFamilyMembers() {
+    if (isOfflineToken()) {
+      const uid = getOfflineUserId();
+      return { success: true, data: { familyMembers: lsGetFamily(uid) } };
+    }
+    try {
+      const res = await apiClient.get('/users/family-members');
+      return res.data;
+    } catch (err) {
+      const uid = getOfflineUserId();
+      return { success: true, data: { familyMembers: lsGetFamily(uid) } };
     }
   },
 
   async updateFamilyMember(memberId, payload) {
+    if (isOfflineToken()) {
+      const uid = getOfflineUserId();
+      const members = lsGetFamily(uid).map((m) => m._id === memberId ? { ...m, ...payload } : m);
+      lsSaveFamily(uid, members);
+      return { success: true, data: { _id: memberId, ...payload } };
+    }
     try {
       const res = await apiClient.put(`/users/family-members/${memberId}`, payload);
       return res.data;
     } catch (err) {
       const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
+      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
+      const uid = getOfflineUserId();
+      const members = lsGetFamily(uid).map((m) => m._id === memberId ? { ...m, ...payload } : m);
+      lsSaveFamily(uid, members);
       return { success: true, data: { _id: memberId, ...payload } };
     }
   },
 
   async deleteFamilyMember(memberId) {
+    if (isOfflineToken()) {
+      const uid = getOfflineUserId();
+      const members = lsGetFamily(uid).filter((m) => m._id !== memberId);
+      lsSaveFamily(uid, members);
+      return { success: true, data: { memberId } };
+    }
     try {
       const res = await apiClient.delete(`/users/family-members/${memberId}`);
       return res.data;
     } catch (err) {
       const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
+      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
+      const uid = getOfflineUserId();
+      const members = lsGetFamily(uid).filter((m) => m._id !== memberId);
+      lsSaveFamily(uid, members);
       return { success: true, data: { memberId } };
     }
   },

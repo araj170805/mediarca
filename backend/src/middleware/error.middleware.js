@@ -3,8 +3,7 @@ const ApiError = require('../utils/apiError.js');
 const errorHandler = (err, req, res, next) => {
   let error = err;
 
-  // ── Mongoose / MongoDB specific errors ───────────────────────────────────
-  // MongoServerSelectionError — DB not reachable
+
   if (err.name === 'MongoServerSelectionError' || err.name === 'MongoNetworkError') {
     error = new ApiError(
       503,

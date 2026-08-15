@@ -64,7 +64,18 @@ export default function PatientDashboard() {
         bloodGroup: user.bloodGroup || '',
         address: user.address || '',
       });
-      setFamilyMembers(user.familyMembers || []);
+
+      // Load family members from user object, or from localStorage (offline mode)
+      const serverMembers = user.familyMembers || [];
+      if (serverMembers.length > 0) {
+        setFamilyMembers(serverMembers);
+      } else {
+        try {
+          const uid = user._id || 'offline_user';
+          const lsMembers = JSON.parse(localStorage.getItem(`mediarca_family_${uid}`) || '[]');
+          if (lsMembers.length > 0) setFamilyMembers(lsMembers);
+        } catch (e) {}
+      }
     }
   }, [user]);
 

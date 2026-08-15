@@ -13,6 +13,7 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
   } else if (req.headers.token) {
     token = req.headers.token;
   }
+  
 
   if (!token) {
     throw new ApiError(401, 'Authentication token missing');
