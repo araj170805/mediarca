@@ -110,11 +110,17 @@ export default function AuthModal() {
       }
     } catch (err) {
       console.error('Google Sign-In Error:', err);
-      setError(
-        err?.response?.data?.message ||
-        err?.message ||
-        'Google authentication failed or was cancelled.'
-      );
+      const code = err?.code || '';
+      const msg = err?.message || '';
+      if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+        setError('This domain is not authorized in Firebase Console yet. Please add your Vercel URL to Authorized Domains in Firebase Authentication Settings.');
+      } else {
+        setError(
+          err?.response?.data?.message ||
+          err?.message ||
+          'Google authentication failed or was cancelled.'
+        );
+      }
     } finally {
       setLoading(false);
     }
