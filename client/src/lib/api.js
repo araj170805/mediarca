@@ -1,6 +1,20 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api/v1';
+
+const getCleanApiBaseUrl = (url) => {
+  let clean = url.trim().replace(/\/+$/, '');
+  if (!clean.endsWith('/api/v1')) {
+    if (clean.endsWith('/api')) {
+      clean = clean + '/v1';
+    } else {
+      clean = clean + '/api/v1';
+    }
+  }
+  return clean;
+};
+
+const API_BASE_URL = getCleanApiBaseUrl(rawApiUrl);
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
