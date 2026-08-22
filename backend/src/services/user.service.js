@@ -38,7 +38,14 @@ class UserService {
       throw new ApiError(404, 'User not found');
     }
 
-    user.familyMembers.push(memberData);
+    // Only accept schema fields; never trust client-supplied _id
+    const allowedFields = ['name', 'relation', 'age', 'gender', 'phone'];
+    const filteredData = {};
+    allowedFields.forEach((key) => {
+      if (memberData[key] !== undefined) filteredData[key] = memberData[key];
+    });
+
+    user.familyMembers.push(filteredData);
     await user.save();
 
     return user.familyMembers;
@@ -55,7 +62,10 @@ class UserService {
       throw new ApiError(404, 'Family member not found');
     }
 
-    Object.assign(member, memberData);
+    const allowedFields = ['name', 'relation', 'age', 'gender', 'phone'];
+    allowedFields.forEach((key) => {
+      if (memberData[key] !== undefined) member[key] = memberData[key];
+    });
     await user.save();
 
     return user.familyMembers;

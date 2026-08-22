@@ -140,7 +140,6 @@ export default function PatientDashboard() {
     setActionLoading(true);
     try {
       const newMember = {
-        _id: `fam_${Date.now()}`,
         name: familyForm.name,
         relation: familyForm.relation,
         age: Number(familyForm.age) || 0,
@@ -150,15 +149,10 @@ export default function PatientDashboard() {
 
       const res = await api.addFamilyMember(newMember);
       if (res?.success) {
-        const added = Array.isArray(res.data?.familyMembers)
-          ? res.data.familyMembers
-          : (res.data?._id ? res.data : newMember);
-
-        setFamilyMembers((prev) => {
-          if (Array.isArray(added)) return added;
-          const exists = prev.some((m) => m._id === added._id);
-          return exists ? prev : [...prev, added];
-        });
+        // Backend returns the updated familyMembers array (with real Mongo _ids)
+        if (Array.isArray(res.data?.familyMembers)) {
+          setFamilyMembers(res.data.familyMembers);
+        }
 
         setShowAddFamilyModal(false);
         setFamilyForm({ name: '', relation: 'Spouse', age: '', gender: 'male', phone: '' });
