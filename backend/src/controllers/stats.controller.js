@@ -54,12 +54,14 @@ const getReceptionistStats = asyncHandler(async (req, res) => {
     confirmedAppointments,
     completedAppointments,
     activeDoctors,
+    totalDoctors,
   ] = await Promise.all([
     Appointment.countDocuments({ clinicId, bookedAt: { $gte: startOfDay } }),
     Appointment.countDocuments({ clinicId, status: 'pending' }),
     Appointment.countDocuments({ clinicId, status: 'confirmed' }),
     Appointment.countDocuments({ clinicId, status: 'completed' }),
     DoctorClinic.countDocuments({ clinicId, isActive: true }),
+    DoctorClinic.countDocuments({ clinicId }),
   ]);
 
   const stats = {
@@ -68,6 +70,7 @@ const getReceptionistStats = asyncHandler(async (req, res) => {
     confirmedAppointments,
     completedAppointments,
     activeDoctors,
+    totalDoctors,
   };
 
   res.status(200).json(new ApiResponse(200, stats, 'Receptionist dashboard statistics retrieved'));

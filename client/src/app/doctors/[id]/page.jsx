@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -97,13 +96,21 @@ export default function DoctorProfilePage() {
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
         {/* Left Doctor Photo */}
         <div className="md:col-span-4 relative flex justify-center">
-          <div className="relative w-48 h-56 sm:w-56 sm:h-64 rounded-3xl overflow-hidden border-2 border-slate-100 shadow-md">
-            <Image
-              src={doctor.image || '/images/doctor_rahul_sharma.png'}
-              alt={doctor.name}
-              fill
-              className="object-cover"
-            />
+          <div className="w-48 h-56 sm:w-56 sm:h-64 rounded-3xl overflow-hidden border-2 border-slate-100 shadow-md bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center">
+            {doctor.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={doctor.image} alt={doctor.name} className="object-cover w-full h-full" />
+            ) : (
+              <span className="text-5xl font-extrabold text-[#0D5C46]/70 select-none">
+                {(doctor.name || '?')
+                  .replace(/^Dr\.?\s*/i, '')
+                  .split(' ')
+                  .map((w) => w[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase()}
+              </span>
+            )}
           </div>
         </div>
 
@@ -112,23 +119,16 @@ export default function DoctorProfilePage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">{doctor.name}</h1>
-              <CheckCircle className="w-5 h-5 text-emerald-600 fill-emerald-100" />
+              {doctor.isActive !== false && (
+                <CheckCircle className="w-5 h-5 text-emerald-600 fill-emerald-100" />
+              )}
             </div>
             <p className="text-base font-bold text-[#0D5C46] mt-1">{doctor.specialization}</p>
-            <p className="text-xs text-slate-500 mt-1 font-medium">
-              {doctor.qualification || 'MBBS, MD'} • {doctor.experience || '5+ Years Experience'}
-            </p>
-          </div>
-
-          {/* Rating */}
-          <div className="flex items-center gap-2">
-            <div className="flex text-amber-400">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} className="w-4 h-4 fill-current" />
-              ))}
-            </div>
-            <span className="text-xs font-bold text-slate-800">{doctor.rating || 4.9}</span>
-            <span className="text-xs text-slate-400">({doctor.reviewCount || 45} Reviews)</span>
+            {(doctor.qualification || doctor.experience) && (
+              <p className="text-xs text-slate-500 mt-1 font-medium">
+                {[doctor.qualification, doctor.experience].filter(Boolean).join(' • ')}
+              </p>
+            )}
           </div>
 
           {/* Clinic & Location */}
@@ -138,7 +138,7 @@ export default function DoctorProfilePage() {
               <span>{clinicInfo.name || doctor.clinicName || 'Clinic'}</span>
             </p>
             <p className="text-slate-500 pl-5">
-              {clinicInfo.address?.city ? `${clinicInfo.address.city}, ${clinicInfo.address.state || ''}` : doctor.locationText || 'Location details'}
+              {clinicInfo.address?.city ? `${clinicInfo.address.city}, ${clinicInfo.address.state || ''}` : ''}
             </p>
           </div>
 
@@ -183,7 +183,7 @@ export default function DoctorProfilePage() {
               <div>
                 <h3 className="text-base font-bold text-slate-800 mb-2">About Doctor</h3>
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
-                  {doctor.bio || `${doctor.name} is a dedicated ${doctor.specialization} committed to delivering high-quality healthcare and compassionate patient treatment.`}
+                  {doctor.bio || 'No additional profile information has been provided by this doctor yet.'}
                 </p>
               </div>
 
@@ -191,19 +191,21 @@ export default function DoctorProfilePage() {
                 <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
                   <Globe className="w-4 h-4 text-[#0D5C46] mb-1" />
                   <span className="text-slate-400 block font-semibold">Languages</span>
-                  <span className="font-bold text-slate-800">{doctor.languages?.join(', ') || 'English, Hindi'}</span>
+                  <span className="font-bold text-slate-800">
+                    {doctor.languages?.length ? doctor.languages.join(', ') : 'Not provided'}
+                  </span>
                 </div>
 
                 <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
                   <Award className="w-4 h-4 text-[#0D5C46] mb-1" />
                   <span className="text-slate-400 block font-semibold">Experience</span>
-                  <span className="font-bold text-slate-800">{doctor.experience || '5+ Years'}</span>
+                  <span className="font-bold text-slate-800">{doctor.experience || 'Not provided'}</span>
                 </div>
 
                 <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100">
                   <CheckCircle className="w-4 h-4 text-[#0D5C46] mb-1" />
                   <span className="text-slate-400 block font-semibold">Qualification</span>
-                  <span className="font-bold text-slate-800">{doctor.qualification || 'MBBS, MD'}</span>
+                  <span className="font-bold text-slate-800">{doctor.qualification || 'Not provided'}</span>
                 </div>
               </div>
             </div>
@@ -215,7 +217,7 @@ export default function DoctorProfilePage() {
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2 text-xs">
                 <p className="font-bold text-slate-800 text-sm">{clinicInfo.name || 'Associated Clinic'}</p>
                 <p className="text-slate-600">
-                  City: {clinicInfo.address?.city || 'Rourkela'}
+                  City: {clinicInfo.address?.city || 'Not provided'}
                 </p>
                 <p className="text-[#0D5C46] font-semibold">Unique Clinic ID: {clinicInfo.uniqueClinicId || 'N/A'}</p>
               </div>
@@ -225,12 +227,10 @@ export default function DoctorProfilePage() {
           {activeTab === 'reviews' && (
             <div className="space-y-4">
               <h3 className="text-base font-bold text-slate-800">Patient Reviews</h3>
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">Verified Patient</span>
-                  <span className="text-xs text-amber-500 font-bold">★ 5.0</span>
-                </div>
-                <p className="text-xs text-slate-600">Attentive doctor who listens carefully and explains diagnosis thoroughly.</p>
+              <div className="p-8 bg-slate-50 rounded-2xl border border-slate-100 text-center space-y-2">
+                <Star className="w-6 h-6 text-slate-300 mx-auto" />
+                <p className="text-xs font-semibold text-slate-600">No patient reviews yet.</p>
+                <p className="text-[10px] text-slate-400">Reviews will appear here once patients start rating this doctor.</p>
               </div>
             </div>
           )}

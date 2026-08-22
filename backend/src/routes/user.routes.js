@@ -6,6 +6,7 @@ const { authorizeRoles } = require('../middleware/role.middleware.js');
 
 // Patient Profile & Family Members
 router.put('/profile', authMiddleware, userController.updateProfile);
+router.get('/family-members', authMiddleware, userController.getFamilyMembers);
 router.post('/family-members', authMiddleware, authorizeRoles('patient'), userController.addFamilyMember);
 router.put('/family-members/:memberId', authMiddleware, authorizeRoles('patient'), userController.updateFamilyMember);
 router.delete('/family-members/:memberId', authMiddleware, authorizeRoles('patient'), userController.deleteFamilyMember);

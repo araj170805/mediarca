@@ -5,6 +5,7 @@ class NotificationService {
   static async getUserNotifications(userId, { page = 1, limit = 20 }) {
     const query = { recipientId: userId };
     const skip = (Number(page) - 1) * Number(limit);
+    
 
     const [notifications, total, unreadCount] = await Promise.all([
       Notification.find(query)

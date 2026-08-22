@@ -63,8 +63,13 @@ export default function ReceptionistDashboard() {
           setSelectedDocId(docsRes.data[0]._id);
         }
       }
-      if (windowsRes?.success && Array.isArray(windowsRes.data)) {
-        setWindowsList(windowsRes.data);
+      if (windowsRes?.success) {
+        const wins = Array.isArray(windowsRes.data)
+          ? windowsRes.data
+          : Array.isArray(windowsRes.data?.windows)
+          ? windowsRes.data.windows
+          : [];
+        setWindowsList(wins);
       }
       if (aptsRes?.success && aptsRes.data && Array.isArray(aptsRes.data.appointments)) {
         setAppointments(aptsRes.data.appointments);

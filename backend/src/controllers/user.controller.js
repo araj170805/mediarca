@@ -7,6 +7,11 @@ const updateProfile = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, user, 'Profile updated successfully'));
 });
 
+const getFamilyMembers = asyncHandler(async (req, res) => {
+  const members = await UserService.getFamilyMembers(req.user._id);
+  res.status(200).json(new ApiResponse(200, { familyMembers: members }, 'Family members retrieved successfully'));
+});
+
 const addFamilyMember = asyncHandler(async (req, res) => {
   const members = await UserService.addFamilyMember(req.user._id, req.body);
   res.status(201).json(new ApiResponse(201, members, 'Family member added successfully'));
@@ -52,6 +57,7 @@ const deleteUser = asyncHandler(async (req, res) => {
 
 module.exports = {
   updateProfile,
+  getFamilyMembers,
   addFamilyMember,
   updateFamilyMember,
   deleteFamilyMember,

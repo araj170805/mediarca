@@ -111,33 +111,41 @@ class DoctorService {
       }
     }
 
+    // If city filter provided, restrict to clinics whose address matches the city
+    if (city) {
+      try {
+        const cityClinics = await Clinic.find({
+          approvalStatus: 'approved',
+          isActive: true,
+          'address.city': { $regex: city, $options: 'i' },
+        }).select('_id');
+        const cityClinicIds = cityClinics.map((c) => c._id);
+        doctorQuery.clinicId =
+          doctorQuery.clinicId && Array.isArray(doctorQuery.clinicId.$in)
+            ? { $in: doctorQuery.clinicId.$in.filter((id) => cityClinicIds.some((cid) => cid.equals(id))) }
+            : { $in: cityClinicIds };
+      } catch (cityErr) {
+        console.warn('City filter query failed:', cityErr.message);
+      }
+    }
+
     const skip = (Number(page) - 1) * Number(limit);
 
-    let doctors = [];
-    try {
-      doctors = await DoctorClinic.find(doctorQuery)
+    const [foundDoctors, total] = await Promise.all([
+      DoctorClinic.find(doctorQuery)
         .populate({
           path: 'clinicId',
           select: 'name address location approvalStatus isActive uniqueClinicId',
         })
         .skip(skip)
-        .limit(Number(limit));
-    } catch (dbErr) {
-      console.warn('Doctor search DB query failed:', dbErr.message);
-      return {
-        doctors: [],
-        pagination: { page: Number(page), limit: Number(limit), total: 0 },
-      };
-    }
+        .limit(Number(limit)),
+      DoctorClinic.countDocuments(doctorQuery),
+    ]);
 
-    // Filter out doctors whose clinic is not active or approved, or does not match city filter
-    doctors = doctors.filter((doc) => {
+    // Filter out doctors whose clinic is not active or approved
+    const doctors = foundDoctors.filter((doc) => {
       const c = doc.clinicId;
-      if (!c || !c.isActive || c.approvalStatus !== 'approved') return false;
-      if (city && c.address && c.address.city) {
-        return c.address.city.toLowerCase().includes(city.toLowerCase());
-      }
-      return true;
+      return c && c.isActive && c.approvalStatus === 'approved';
     });
 
     let windows = [];
@@ -165,6 +173,8 @@ class DoctorService {
       pagination: {
         page: Number(page),
         limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit)),
       },
     };
   }

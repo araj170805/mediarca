@@ -70,7 +70,7 @@ class GoogleAuthService {
         role: 'patient',
         isApproved: true,
         isActive: true,
-        isEmailVerified: email_verified || true,
+        isEmailVerified: true,
         isVerified: true,
         password: null,
       });

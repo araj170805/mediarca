@@ -35,40 +35,14 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-// Returns true when the stored token is a client-side placeholder (no real JWT)
-const isOfflineToken = () => {
-  if (typeof window === 'undefined') return false;
-  const token = localStorage.getItem('mediarca_token');
-  if (!token) return true;
-  const offlinePrefixes = ['patient_jwt_', 'receptionist_jwt_', 'patient_google_jwt_', 'admin_fallback_jwt'];
-  return offlinePrefixes.some((p) => token.startsWith(p));
-};
-
-// Read/write family members from localStorage
-const lsFamilyKey = (userId) => `mediarca_family_${userId}`;
-const lsGetFamily = (userId) => {
-  try { return JSON.parse(localStorage.getItem(lsFamilyKey(userId)) || '[]'); } catch { return []; }
-};
-const lsSaveFamily = (userId, members) => {
-  localStorage.setItem(lsFamilyKey(userId), JSON.stringify(members));
-};
-
-// Read/write doctors from localStorage
-const lsDoctorsKey = (userId) => `mediarca_doctors_${userId}`;
-const lsGetDoctors = (userId) => {
-  try { return JSON.parse(localStorage.getItem(lsDoctorsKey(userId)) || '[]'); } catch { return []; }
-};
-const lsSaveDoctors = (userId, doctors) => {
-  localStorage.setItem(lsDoctorsKey(userId), JSON.stringify(doctors));
-};
-
-// Get current offline user _id
-const getOfflineUserId = () => {
-  try {
-    const u = JSON.parse(localStorage.getItem('mediarca_user') || '{}');
-    return u._id || 'offline_user';
-  } catch { return 'offline_user'; }
+// Surface real backend errors instead of fabricating offline responses
+const handleApiError = (err, fallbackMessage) => {
+  const serverMsg = err?.response?.data?.message;
+  if (serverMsg) throw new Error(serverMsg);
+  if (err?.response) {
+    throw new Error(`Request failed with status ${err.response.status}.`);
+  }
+  throw new Error(fallbackMessage);
 };
 
 export const api = {
@@ -79,12 +53,8 @@ export const api = {
       if (res.data && res.data.success) return res.data;
       throw new Error(res?.data?.message || 'Invalid email or password.');
     } catch (err) {
-      const serverMsg = err?.response?.data?.message;
-      if (serverMsg) throw new Error(serverMsg);
-      if (err?.response?.status === 401 || err?.response?.status === 400 || err?.response?.status === 403) {
-        throw new Error('Invalid email or password.');
-      }
-      throw new Error('Unable to connect to authentication server. Please check your credentials or network.');
+      if (err instanceof Error && err.message && !err.message.includes('status')) throw err;
+      handleApiError(err, 'Unable to connect to authentication server. Please check your network.');
     }
   },
 
@@ -92,74 +62,33 @@ export const api = {
     try {
       const res = await apiClient.post('/auth/signup/patient', payload);
       if (res.data && res.data.success) return res.data;
+      throw new Error(res?.data?.message || 'Registration failed.');
     } catch (err) {
-      const serverMsg = err?.response?.data?.message;
-      if (serverMsg) throw new Error(serverMsg);
+      if (err instanceof Error && err.message && !err.message.includes('status') && !err.message.startsWith('Network Error')) throw err;
+      handleApiError(err, 'Unable to connect to the server. Please check your network.');
     }
-
-    return {
-      success: true,
-      data: {
-        token: `patient_jwt_${Date.now()}`,
-        user: {
-          _id: `pat_${Date.now()}`,
-          name: payload.name || 'New Patient',
-          email: payload.email,
-          role: 'patient',
-          isApproved: true,
-          isActive: true,
-        },
-      },
-    };
   },
 
   async registerReceptionist(payload) {
     try {
       const res = await apiClient.post('/auth/signup/receptionist', payload);
       if (res.data && res.data.success) return res.data;
+      throw new Error(res?.data?.message || 'Registration failed.');
     } catch (err) {
-      const serverMsg = err?.response?.data?.message;
-      if (serverMsg) throw new Error(serverMsg);
+      if (err instanceof Error && err.message && !err.message.includes('status') && !err.message.startsWith('Network Error')) throw err;
+      handleApiError(err, 'Unable to connect to the server. Please check your network.');
     }
-
-    return {
-      success: true,
-      data: {
-        token: `receptionist_jwt_${Date.now()}`,
-        user: {
-          _id: `rec_${Date.now()}`,
-          name: payload.name || 'Receptionist',
-          email: payload.email,
-          role: 'receptionist',
-          isApproved: true,
-          isActive: true,
-        },
-      },
-    };
   },
 
-  async googleAuthPatient(idToken, fbUser = null) {
+  async googleAuthPatient(idToken) {
     try {
       const res = await apiClient.post('/auth/google/patient', { idToken });
       if (res.data && res.data.success) return res.data;
+      throw new Error(res?.data?.message || 'Google sign-in failed.');
     } catch (err) {
-      console.warn('Backend Google Auth endpoint unreachable, using client Google credentials');
+      if (err instanceof Error && err.message && !err.message.includes('status') && !err.message.startsWith('Network Error')) throw err;
+      handleApiError(err, 'Unable to reach the authentication server for Google sign-in.');
     }
-    return {
-      success: true,
-      data: {
-        token: `patient_google_jwt_${Date.now()}`,
-        user: {
-          _id: fbUser?.uid || `google_user_${Date.now()}`,
-          name: fbUser?.displayName || fbUser?.email?.split('@')[0] || 'Patient User',
-          email: fbUser?.email || 'patient@mediarca.com',
-          avatar: fbUser?.photoURL || null,
-          role: 'patient',
-          isApproved: true,
-          isActive: true,
-        },
-      },
-    };
   },
 
   async getMe() {
@@ -177,13 +106,7 @@ export const api = {
       const res = await apiClient.get('/doctors', { params });
       return res.data;
     } catch (err) {
-      return {
-        success: true,
-        data: {
-          doctors: [],
-          pagination: { total: 0, page: 1, limit: 10 },
-        },
-      };
+      handleApiError(err, 'Unable to load doctors. Please check your connection.');
     }
   },
 
@@ -194,12 +117,8 @@ export const api = {
 
   // ─── APPOINTMENT WINDOWS ──────────────────────────────────────────────────
   async getDoctorWindows(doctorId) {
-    try {
-      const res = await apiClient.get(`/appointment-windows/doctor/${doctorId}`);
-      return res.data;
-    } catch (err) {
-      return { success: true, data: [] };
-    }
+    const res = await apiClient.get(`/appointment-windows/doctor/${doctorId}`);
+    return res.data;
   },
 
   async createAppointmentWindow(payload) {
@@ -208,12 +127,8 @@ export const api = {
   },
 
   async getClinicWindows() {
-    try {
-      const res = await apiClient.get('/appointment-windows/clinic');
-      return res.data;
-    } catch (err) {
-      return { success: true, data: [] };
-    }
+    const res = await apiClient.get('/appointment-windows/clinic');
+    return res.data;
   },
 
   async updateWindowStatus(windowId, status) {
@@ -227,26 +142,13 @@ export const api = {
       const res = await apiClient.post('/appointments', payload);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return {
-        success: true,
-        data: {
-          _id: `apt_${Date.now()}`,
-          status: 'pending',
-          ...payload,
-        },
-      };
+      handleApiError(err, 'Booking failed. Please check your connection and try again.');
     }
   },
 
   async getPatientAppointments(params = {}) {
-    try {
-      const res = await apiClient.get('/appointments/my-appointments', { params });
-      return res.data;
-    } catch (err) {
-      return { success: true, data: [] };
-    }
+    const res = await apiClient.get('/appointments/my-appointments', { params });
+    return res.data;
   },
 
   async cancelAppointment(appointmentId) {
@@ -254,19 +156,13 @@ export const api = {
       const res = await apiClient.put(`/appointments/${appointmentId}/cancel`);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return { success: true, data: { appointmentId, status: 'cancelled' } };
+      handleApiError(err, 'Failed to cancel appointment.');
     }
   },
 
   async getClinicAppointments(params = {}) {
-    try {
-      const res = await apiClient.get('/appointments/clinic', { params });
-      return res.data;
-    } catch (err) {
-      return { success: true, data: [] };
-    }
+    const res = await apiClient.get('/appointments/clinic', { params });
+    return res.data;
   },
 
   async confirmAppointment(appointmentId) {
@@ -274,9 +170,7 @@ export const api = {
       const res = await apiClient.put(`/appointments/${appointmentId}/confirm`);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return { success: true, data: { appointmentId, status: 'confirmed' } };
+      handleApiError(err, 'Failed to confirm appointment.');
     }
   },
 
@@ -285,9 +179,7 @@ export const api = {
       const res = await apiClient.put(`/appointments/${appointmentId}/reject`);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return { success: true, data: { appointmentId, status: 'rejected' } };
+      handleApiError(err, 'Failed to reject appointment.');
     }
   },
 
@@ -296,66 +188,31 @@ export const api = {
       const res = await apiClient.put(`/appointments/${appointmentId}/complete`);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return { success: true, data: { appointmentId, status: 'completed' } };
+      handleApiError(err, 'Failed to complete appointment.');
     }
   },
 
   // ─── RECEPTIONIST DOCTOR MANAGEMENT ─────────────────────────────────────
   async addDoctor(payload) {
-    if (isOfflineToken()) {
-      const uid = getOfflineUserId();
-      const newDoc = { _id: `doc_${Date.now()}`, isActive: true, ...payload };
-      const docs = lsGetDoctors(uid);
-      docs.push(newDoc);
-      lsSaveDoctors(uid, docs);
-      return { success: true, data: newDoc };
-    }
     try {
       const res = await apiClient.post('/doctors', payload);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
-      const uid = getOfflineUserId();
-      const newDoc = { _id: `doc_${Date.now()}`, isActive: true, ...payload };
-      const docs = lsGetDoctors(uid);
-      docs.push(newDoc);
-      lsSaveDoctors(uid, docs);
-      return { success: true, data: newDoc };
+      handleApiError(err, 'Failed to add doctor.');
     }
   },
 
   async getReceptionistDoctors() {
-    if (isOfflineToken()) {
-      const uid = getOfflineUserId();
-      return { success: true, data: lsGetDoctors(uid) };
-    }
-    try {
-      const res = await apiClient.get('/doctors/clinic/my-doctors');
-      return res.data;
-    } catch (err) {
-      const uid = getOfflineUserId();
-      return { success: true, data: lsGetDoctors(uid) };
-    }
+    const res = await apiClient.get('/doctors/clinic/my-doctors');
+    return res.data;
   },
 
   async toggleDoctorStatus(doctorId, isActive) {
-    if (isOfflineToken()) {
-      const uid = getOfflineUserId();
-      const docs = lsGetDoctors(uid).map((d) => d._id === doctorId ? { ...d, isActive } : d);
-      lsSaveDoctors(uid, docs);
-      return { success: true, data: { doctorId, isActive } };
-    }
     try {
       const res = await apiClient.patch(`/doctors/${doctorId}/status`, { isActive });
       return res.data;
     } catch (err) {
-      const uid = getOfflineUserId();
-      const docs = lsGetDoctors(uid).map((d) => d._id === doctorId ? { ...d, isActive } : d);
-      lsSaveDoctors(uid, docs);
-      return { success: true, data: { doctorId, isActive } };
+      handleApiError(err, 'Failed to update doctor status.');
     }
   },
 
@@ -365,98 +222,46 @@ export const api = {
       const res = await apiClient.put('/users/profile', payload);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg) throw new Error(msg);
-      return { success: true, data: payload };
+      handleApiError(err, 'Failed to update profile.');
     }
   },
 
   async addFamilyMember(payload) {
-    if (isOfflineToken()) {
-      const uid = getOfflineUserId();
-      const newMember = { _id: `fam_${Date.now()}`, ...payload };
-      const members = lsGetFamily(uid);
-      members.push(newMember);
-      lsSaveFamily(uid, members);
-      return { success: true, data: newMember };
-    }
     try {
       const res = await apiClient.post('/users/family-members', payload);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
-      const uid = getOfflineUserId();
-      const newMember = { _id: `fam_${Date.now()}`, ...payload };
-      const members = lsGetFamily(uid);
-      members.push(newMember);
-      lsSaveFamily(uid, members);
-      return { success: true, data: newMember };
+      handleApiError(err, 'Failed to add family member.');
     }
   },
 
   async getFamilyMembers() {
-    if (isOfflineToken()) {
-      const uid = getOfflineUserId();
-      return { success: true, data: { familyMembers: lsGetFamily(uid) } };
-    }
-    try {
-      const res = await apiClient.get('/users/family-members');
-      return res.data;
-    } catch (err) {
-      const uid = getOfflineUserId();
-      return { success: true, data: { familyMembers: lsGetFamily(uid) } };
-    }
+    const res = await apiClient.get('/users/family-members');
+    return res.data;
   },
 
   async updateFamilyMember(memberId, payload) {
-    if (isOfflineToken()) {
-      const uid = getOfflineUserId();
-      const members = lsGetFamily(uid).map((m) => m._id === memberId ? { ...m, ...payload } : m);
-      lsSaveFamily(uid, members);
-      return { success: true, data: { _id: memberId, ...payload } };
-    }
     try {
       const res = await apiClient.put(`/users/family-members/${memberId}`, payload);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
-      const uid = getOfflineUserId();
-      const members = lsGetFamily(uid).map((m) => m._id === memberId ? { ...m, ...payload } : m);
-      lsSaveFamily(uid, members);
-      return { success: true, data: { _id: memberId, ...payload } };
+      handleApiError(err, 'Failed to update family member.');
     }
   },
 
   async deleteFamilyMember(memberId) {
-    if (isOfflineToken()) {
-      const uid = getOfflineUserId();
-      const members = lsGetFamily(uid).filter((m) => m._id !== memberId);
-      lsSaveFamily(uid, members);
-      return { success: true, data: { memberId } };
-    }
     try {
       const res = await apiClient.delete(`/users/family-members/${memberId}`);
       return res.data;
     } catch (err) {
-      const msg = err?.response?.data?.message;
-      if (msg && !msg.toLowerCase().includes('token') && !msg.toLowerCase().includes('auth')) throw new Error(msg);
-      const uid = getOfflineUserId();
-      const members = lsGetFamily(uid).filter((m) => m._id !== memberId);
-      lsSaveFamily(uid, members);
-      return { success: true, data: { memberId } };
+      handleApiError(err, 'Failed to delete family member.');
     }
   },
 
   // ─── NOTIFICATIONS ────────────────────────────────────────────────────────
   async getNotifications() {
-    try {
-      const res = await apiClient.get('/notifications');
-      return res.data;
-    } catch (err) {
-      return { success: true, data: [] };
-    }
+    const res = await apiClient.get('/notifications');
+    return res.data;
   },
 
   async markNotificationRead(id) {

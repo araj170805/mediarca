@@ -24,6 +24,14 @@ class UserService {
     return user;
   }
 
+  static async getFamilyMembers(userId) {
+    const user = await User.findById(userId).select('familyMembers');
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+    return user.familyMembers;
+  }
+
   static async addFamilyMember(userId, memberData) {
     const user = await User.findById(userId);
     if (!user) {

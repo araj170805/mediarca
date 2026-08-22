@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
@@ -65,26 +64,18 @@ export default function PatientDashboard() {
         address: user.address || '',
       });
 
-      // Load family members from user object, or from localStorage (offline mode)
-      const serverMembers = user.familyMembers || [];
-      if (serverMembers.length > 0) {
-        setFamilyMembers(serverMembers);
-      } else {
-        try {
-          const uid = user._id || 'offline_user';
-          const lsMembers = JSON.parse(localStorage.getItem(`mediarca_family_${uid}`) || '[]');
-          if (lsMembers.length > 0) setFamilyMembers(lsMembers);
-        } catch (e) {}
-      }
+      // Load family members from the server
+      setFamilyMembers(Array.isArray(user.familyMembers) ? user.familyMembers : []);
     }
   }, [user]);
 
   const fetchDashboardData = async () => {
     setLoadingData(true);
     try {
-      const [apRes, notifRes] = await Promise.all([
+      const [apRes, notifRes, famRes] = await Promise.all([
         api.getPatientAppointments(),
         api.getNotifications(),
+        api.getFamilyMembers().catch(() => null),
       ]);
 
       if (apRes?.success && apRes.data && Array.isArray(apRes.data.appointments)) {
@@ -92,6 +83,9 @@ export default function PatientDashboard() {
       }
       if (notifRes?.success && Array.isArray(notifRes.data)) {
         setNotifications(notifRes.data);
+      }
+      if (famRes?.success && Array.isArray(famRes.data?.familyMembers)) {
+        setFamilyMembers(famRes.data.familyMembers);
       }
     } catch (err) {
       console.warn('Failed to load dashboard data:', err.message);
@@ -322,13 +316,16 @@ export default function PatientDashboard() {
                   {upcomingAppointments.length > 0 ? (
                     <div className="bg-white p-6 rounded-3xl border border-slate-150 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
                       <div className="flex items-center gap-4">
-                        <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
-                          <Image
-                            src={upcomingAppointments[0].appointmentWindowId?.doctorId?.image || '/images/doctor_rahul_sharma.png'}
-                            alt="Doctor"
-                            fill
-                            className="object-cover"
-                          />
+                        <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50 flex-shrink-0 border border-slate-200 flex items-center justify-center">
+                          <span className="text-lg font-extrabold text-[#0D5C46]/70 select-none">
+                            {(upcomingAppointments[0].appointmentWindowId?.doctorId?.name || 'DR')
+                              .replace(/^Dr\.?\s*/i, '')
+                              .split(' ')
+                              .map((w) => w[0])
+                              .slice(0, 2)
+                              .join('')
+                              .toUpperCase()}
+                          </span>
                         </div>
                         <div>
                           <h4 className="font-bold text-slate-800 text-base">
@@ -436,8 +433,16 @@ export default function PatientDashboard() {
                     (appointmentsTab === 'upcoming' ? upcomingAppointments : pastAppointments).map((apt) => (
                       <div key={apt._id} className="p-5 rounded-2xl border border-slate-150 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-4">
-                          <div className="relative w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
-                            <Image src={apt.appointmentWindowId?.doctorId?.image || '/images/doctor_rahul_sharma.png'} alt="Doctor" fill className="object-cover" />
+                          <div className="w-14 h-14 rounded-2xl overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50 flex-shrink-0 border border-slate-200 flex items-center justify-center">
+                            <span className="text-base font-extrabold text-[#0D5C46]/70 select-none">
+                              {(apt.appointmentWindowId?.doctorId?.name || 'DR')
+                                .replace(/^Dr\.?\s*/i, '')
+                                .split(' ')
+                                .map((w) => w[0])
+                                .slice(0, 2)
+                                .join('')
+                                .toUpperCase()}
+                            </span>
                           </div>
                           <div>
                             <h4 className="font-bold text-slate-800 text-sm">{apt.appointmentWindowId?.doctorId?.name || 'Doctor'}</h4>

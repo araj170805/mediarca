@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import DoctorCard from '@/components/DoctorCard';
-import { MOCK_DOCTORS } from '@/lib/mockData';
-import { Search, Filter, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, RotateCcw, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+
+const PAGE_SIZE = 10;
 
 export default function DoctorSearchPage() {
   const { selectedLocation } = useAuth();
@@ -14,9 +15,12 @@ export default function DoctorSearchPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [cityInput, setCityInput] = useState('');
   const [specialization, setSpecialization] = useState('All');
-  const [gender, setGender] = useState('All');
   const [availableToday, setAvailableToday] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -26,64 +30,95 @@ export default function DoctorSearchPage() {
       const spec = params.get('specialization');
       if (s) setSearchQuery(s);
       if (c) setCityInput(c);
-      if (spec) setSpecialization(spec);
+      if (spec && spec !== 'All') setSpecialization(spec);
     }
   }, []);
 
-  useEffect(() => {
-    fetchDoctors();
-  }, [specialization, availableToday, selectedLocation]);
-
-  const fetchDoctors = async () => {
+  const fetchDoctors = async (pageNum = 1) => {
     setLoading(true);
+    setError('');
     try {
       const res = await api.searchDoctors({
-        search: searchQuery,
-        specialization: specialization === 'All' ? '' : specialization,
+        search: searchQuery || undefined,
+        specialization: specialization === 'All' ? undefined : specialization,
+        city: cityInput || undefined,
+        page: pageNum,
+        limit: PAGE_SIZE,
       });
-      if (res.success && res.data && Array.isArray(res.data.doctors)) {
-        setDoctors(res.data.doctors);
-      } else {
-        setDoctors([]);
-      }
+      let list = res?.data?.doctors;
+      // Backward compatibility if backend returns a bare array
+      if (!list && Array.isArray(res?.data)) list = res.data;
+      setDoctors(Array.isArray(list) ? list : []);
+
+      const pg = res?.data?.pagination;
+      setTotalPages(pg?.totalPages && pg.totalPages > 0 ? pg.totalPages : 1);
+      setTotalResults(typeof pg?.total === 'number' ? pg.total : (Array.isArray(list) ? list.length : 0));
+      setPage(pageNum);
     } catch (err) {
       setDoctors([]);
+      setTotalPages(1);
+      setTotalResults(0);
+      setError(err.message || 'Failed to load doctors.');
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchDoctors(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [specialization]);
+
+  // "Available Today" is derived from real open appointment windows returned by the API
+  const visibleDoctors = availableToday
+    ? doctors.filter((doc) => Array.isArray(doc.activeWindows) && doc.activeWindows.length > 0)
+    : doctors;
+
   const handleResetFilters = () => {
     setSearchQuery('');
+    setCityInput('');
     setSpecialization('All');
-    setGender('All');
     setAvailableToday(false);
-    fetchDoctors();
+    fetchDoctors(1);
   };
 
-  const filteredDoctors = doctors.filter((doc) => {
-    if (searchQuery && !doc.name.toLowerCase().includes(searchQuery.toLowerCase()) && !doc.specialization.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    if (specialization !== 'All' && doc.specialization !== specialization) {
-      return false;
-    }
-    if (availableToday && doc.availabilityStatus !== 'Available Today') {
-      return false;
-    }
-    return true;
-  });
+  const goToPage = (p) => {
+    if (p < 1 || p > totalPages || p === page) return;
+    fetchDoctors(p);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const renderPageButtons = () => {
+    const pages = [];
+    const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+    const end = Math.min(totalPages, start + 4);
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages.map((p) => (
+      <button
+        key={p}
+        onClick={() => goToPage(p)}
+        className={`w-8 h-8 rounded-lg font-bold text-xs ${
+          p === page ? 'bg-[#0D5C46] text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+        }`}
+      >
+        {p}
+      </button>
+    ));
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      
+
       {/* Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
           Doctors near you
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">
-          Showing doctors in <span className="text-[#0D5C46] font-bold">{selectedLocation}</span>
+          Showing doctors in <span className="text-[#0D5C46] font-bold">{cityInput || selectedLocation}</span>
+          {!loading && totalResults > 0 && (
+            <span> · {totalResults} doctor{totalResults !== 1 ? 's' : ''} found</span>
+          )}
         </p>
       </div>
 
@@ -94,11 +129,20 @@ export default function DoctorSearchPage() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && fetchDoctors(1)}
           placeholder="Search doctor or specialization..."
           className="flex-1 text-sm font-medium focus:outline-none"
         />
+        <input
+          type="text"
+          value={cityInput}
+          onChange={(e) => setCityInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && fetchDoctors(1)}
+          placeholder="City..."
+          className="w-32 text-sm font-medium border-l border-slate-100 pl-3 focus:outline-none"
+        />
         <button
-          onClick={fetchDoctors}
+          onClick={() => fetchDoctors(1)}
           className="px-5 py-2.5 bg-[#0D5C46] hover:bg-[#083E2F] text-white text-xs font-bold rounded-xl transition"
         >
           Search
@@ -107,7 +151,7 @@ export default function DoctorSearchPage() {
 
       {/* Main Grid: Filters Sidebar + Doctor List */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
+
         {/* Left Filters Sidebar */}
         <div className="lg:col-span-3 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -137,20 +181,8 @@ export default function DoctorSearchPage() {
               <option value="Dermatologist">Dermatologist</option>
               <option value="Orthopedic">Orthopedic</option>
               <option value="Pediatrician">Pediatrician</option>
-            </select>
-          </div>
-
-          {/* Gender Filter */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-700">Gender</label>
-            <select
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0D5C46] font-medium"
-            >
-              <option value="All">All</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
+              <option value="Dentist">Dentist</option>
+              <option value="General Physician">General Physician</option>
             </select>
           </div>
 
@@ -177,14 +209,24 @@ export default function DoctorSearchPage() {
 
         {/* Right Doctor Cards List */}
         <div className="lg:col-span-9 space-y-4">
-          {filteredDoctors.length > 0 ? (
-            filteredDoctors.map((doctor) => (
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-xs font-bold">
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-[#0D5C46]" />
+            </div>
+          ) : visibleDoctors.length > 0 ? (
+            visibleDoctors.map((doctor) => (
               <DoctorCard key={doctor._id} doctor={doctor} />
             ))
-          ) : (
+          ) : !error ? (
             <div className="bg-white p-12 rounded-3xl border border-slate-100 text-center space-y-3">
-              <p className="text-base font-bold text-slate-700">No doctor found at this location</p>
-              <p className="text-xs text-slate-400">Only doctors registered on MediArca will appear here. No doctors registered for this search yet.</p>
+              <p className="text-base font-bold text-slate-700">No doctors found for this search</p>
+              <p className="text-xs text-slate-400">Only doctors registered on MediArca will appear here. Try different filters or search terms.</p>
               <button
                 onClick={handleResetFilters}
                 className="px-5 py-2 bg-[#0D5C46] text-white text-xs font-bold rounded-xl"
@@ -192,22 +234,28 @@ export default function DoctorSearchPage() {
                 Reset Search
               </button>
             </div>
-          )}
+          ) : null}
 
           {/* Pagination */}
-          <div className="flex items-center justify-center gap-2 pt-6">
-            <button className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button className="w-8 h-8 rounded-lg bg-[#0D5C46] text-white font-bold text-xs">1</button>
-            <button className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs">2</button>
-            <button className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs">3</button>
-            <span className="text-xs text-slate-400 px-1">...</span>
-            <button className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs">10</button>
-            <button className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+          {!loading && totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-6">
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page <= 1}
+                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-40"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {renderPageButtons()}
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages}
+                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-40"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
 
       </div>
